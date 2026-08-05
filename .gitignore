@@ -1,0 +1,27 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Release signing — never commit the keystore or its passwords.
+/keystore/
+keystore.properties
+
+# Reference/source material used to build the app (My Movies Pro export PDFs, mockup
+# screenshots, icon source) — not app source, and the PDFs alone are ~95MB. Already fully
+# consumed into app/src assets and the device-side import staging dir.
+/ListeFilms*.pdf
+/Icone.*
+/ScreenShot/
+/liste2026.txt

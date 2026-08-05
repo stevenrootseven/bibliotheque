@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ma Bibliothèque</string>
+
+    <string name="tab_movies">Films</string>
+    <string name="tab_books">Livres</string>
+
+    <string name="action_scan">Scanner</string>
+    <string name="action_settings">Réglages</string>
+    <string name="action_search">Rechercher</string>
+    <string name="action_delete">Supprimer</string>
+    <string name="action_save">Enregistrer</string>
+    <string name="action_cancel">Annuler</string>
+    <string name="action_retry">Réessayer</string>
+
+    <string name="empty_collection_movies">Aucun film pour le moment. Appuyez sur + pour scanner un code-barres.</string>
+    <string name="empty_collection_books">Aucun livre pour le moment. Appuyez sur + pour scanner un code-barres.</string>
+
+    <string name="scan_hint">Visez le code-barres du film ou du livre</string>
+    <string name="scan_looking_up">Recherche des informations…</string>
+    <string name="scan_not_found">Aucun résultat trouvé pour ce code-barres.</string>
+    <string name="scan_search_manually">Chercher le titre manuellement</string>
+
+    <string name="settings_tmdb_key_title">Clé API TMDB</string>
+    <string name="settings_tmdb_key_explanation">Nécessaire pour identifier les films (affiche, acteurs, année…). Gratuite : créez un compte sur themoviedb.org, section Réglages > API, puis collez la clé « API Key (v3 auth) » ci-dessous.</string>
+    <string name="settings_tmdb_key_hint">Collez votre clé TMDB ici</string>
+    <string name="settings_tmdb_key_missing">Aucune clé TMDB configurée — la recherche de films ne fonctionnera pas tant qu\'elle n\'est pas renseignée dans Réglages.</string>
+
+    <string name="detail_year">Année</string>
+    <string name="detail_genres">Genres</string>
+    <string name="detail_actors">Acteurs</string>
+    <string name="detail_director">Réalisateur</string>
+    <string name="detail_runtime">Durée</string>
+    <string name="detail_authors">Auteurs</string>
+    <string name="detail_publisher">Éditeur</string>
+    <string name="detail_pages">Pages</string>
+    <string name="detail_isbn">ISBN</string>
+    <string name="detail_barcode">Code-barres</string>
+    <string name="detail_added">Ajouté le</string>
+    <string name="detail_synopsis">Synopsis</string>
+</resources>
