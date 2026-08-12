@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -70,7 +71,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
 import com.stevenroot.mabibliotheque.R
-import com.stevenroot.mabibliotheque.data.remote.GoogleBookVolumeInfo
+import com.stevenroot.mabibliotheque.data.remote.BookVolumeInfo
 import com.stevenroot.mabibliotheque.data.remote.TmdbApi
 import com.stevenroot.mabibliotheque.data.remote.TmdbMovieSummary
 import kotlinx.coroutines.delay
@@ -133,20 +134,32 @@ fun ScanScreen(
         )
 
         if (state is ScanUiState.Scanning) {
-            Text(
-                text = stringResource(R.string.scan_hint),
-                color = MaterialTheme.colorScheme.onSurface,
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(24.dp)
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+            ) {
+                Text(text = stringResource(R.string.scan_hint), color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    "Pas de code-barre ?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { viewModel.startManualEntry(MediaKind.BOOK) }) { Text("Ajouter un livre") }
+                    TextButton(onClick = { viewModel.startManualEntry(MediaKind.MOVIE) }) { Text("Ajouter un film") }
+                }
+            }
         } else {
             Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .imePadding(),
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 8.dp,
             ) {
@@ -195,6 +208,10 @@ private fun ScanResultPanel(
                         MovieCandidateRow(candidate) { viewModel.selectMovieCandidate(state.barcode, candidate) }
                     }
                 }
+                TextButton(onClick = { viewModel.startCoverPhoto(MediaKind.MOVIE, state.barcode) }) {
+                    Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text(" Aucun de ceux-ci — photographier la jaquette")
+                }
                 TextButton(onClick = viewModel::resetToScanning) { Text(stringResource(R.string.action_cancel)) }
             }
 
@@ -215,21 +232,30 @@ private fun ScanResultPanel(
             is ScanUiState.NotFound -> {
                 Text(stringResource(R.string.scan_not_found))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (state.kind == MediaKind.MOVIE) {
-                        Button(onClick = { viewModel.startCoverPhoto(state.kind, state.barcode) }) {
-                            Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Text(" Photographier la jaquette")
-                        }
+                    Button(onClick = { viewModel.startCoverPhoto(state.kind, state.barcode) }) {
+                        Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text(if (state.kind == MediaKind.BOOK) " Photographier la couverture" else " Photographier la jaquette")
                     }
                     TextButton(onClick = { viewModel.startManualSearch(state.kind, state.barcode) }) {
                         Text(stringResource(R.string.scan_search_manually))
+                    }
+                }
+                if (state.kind == MediaKind.BOOK) {
+                    TextButton(onClick = viewModel::startBookManualEntry) {
+                        Text("Créer la fiche manuellement (titre, auteur, ISBN)")
                     }
                 }
                 TextButton(onClick = viewModel::resetToScanning) { Text(stringResource(R.string.action_cancel)) }
             }
 
             is ScanUiState.CoverPhoto -> {
-                Text("Cadrez le titre du film sur la jaquette, puis prenez la photo")
+                Text(
+                    if (state.kind == MediaKind.BOOK) {
+                        "Cadrez le titre (ou l'ISBN) sur la couverture, puis prenez la photo"
+                    } else {
+                        "Cadrez le titre du film sur la jaquette, puis prenez la photo"
+                    },
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = onCapturePhoto) {
                         Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -242,6 +268,8 @@ private fun ScanResultPanel(
             is ScanUiState.RecognizingCover -> CenteredSpinnerRow("Lecture du texte…")
 
             is ScanUiState.ManualSearch -> ManualSearchPanel(state, viewModel)
+
+            is ScanUiState.BookManualEntry -> BookManualEntryPanel(state, viewModel)
 
             is ScanUiState.Error -> {
                 Text(state.message, color = MaterialTheme.colorScheme.error)
@@ -296,14 +324,14 @@ private fun MovieCandidateRow(candidate: TmdbMovieSummary, onClick: () -> Unit) 
 }
 
 @Composable
-private fun BookCandidateRow(candidate: GoogleBookVolumeInfo, onClick: () -> Unit) {
+private fun BookCandidateRow(candidate: BookVolumeInfo, onClick: () -> Unit) {
     ListItem(
         headlineContent = { Text(candidate.title) },
         supportingContent = { Text(candidate.authors.joinToString(", ")) },
         leadingContent = {
-            candidate.imageLinks?.thumbnail?.let {
+            candidate.coverUrl?.let {
                 AsyncImage(
-                    model = it.replace("http://", "https://"),
+                    model = it,
                     contentDescription = null,
                     modifier = Modifier.size(width = 40.dp, height = 60.dp),
                 )
@@ -346,6 +374,10 @@ private fun MovieConfirmPanel(state: ScanUiState.MovieConfirm, viewModel: ScanVi
             Button(onClick = viewModel::confirmSaveMovie) { Text(stringResource(R.string.action_save)) }
             TextButton(onClick = viewModel::resetToScanning) { Text(stringResource(R.string.action_cancel)) }
         }
+        TextButton(onClick = { viewModel.startCoverPhoto(MediaKind.MOVIE, state.barcode) }) {
+            Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(" Ce n'est pas le bon film — photographier la jaquette")
+        }
     }
 }
 
@@ -353,9 +385,9 @@ private fun MovieConfirmPanel(state: ScanUiState.MovieConfirm, viewModel: ScanVi
 private fun BookConfirmPanel(state: ScanUiState.BookConfirm, viewModel: ScanViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            state.info.imageLinks?.thumbnail?.let {
+            state.info.coverUrl?.let {
                 AsyncImage(
-                    model = it.replace("http://", "https://"),
+                    model = it,
                     contentDescription = null,
                     modifier = Modifier.size(width = 70.dp, height = 105.dp),
                 )
@@ -371,6 +403,9 @@ private fun BookConfirmPanel(state: ScanUiState.BookConfirm, viewModel: ScanView
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = viewModel::confirmSaveBook) { Text(stringResource(R.string.action_save)) }
             TextButton(onClick = viewModel::resetToScanning) { Text(stringResource(R.string.action_cancel)) }
+        }
+        TextButton(onClick = { viewModel.startManualSearch(MediaKind.BOOK, state.barcode) }) {
+            Text("Ce n'est pas le bon livre — chercher par titre")
         }
     }
 }
@@ -401,6 +436,66 @@ private fun ManualSearchPanel(state: ScanUiState.ManualSearch, viewModel: ScanVi
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = viewModel::runManualSearch) { Text(stringResource(R.string.action_search)) }
+            TextButton(onClick = viewModel::resetToScanning) { Text(stringResource(R.string.action_cancel)) }
+        }
+        TextButton(onClick = { viewModel.startCoverPhoto(state.kind, state.barcode) }) {
+            Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(if (state.kind == MediaKind.BOOK) " Photographier la couverture" else " Photographier la jaquette")
+        }
+        if (state.kind == MediaKind.BOOK) {
+            TextButton(onClick = viewModel::startBookManualEntry) {
+                Text("Toujours rien — créer la fiche manuellement")
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookManualEntryPanel(state: ScanUiState.BookManualEntry, viewModel: ScanViewModel) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.verticalScroll(rememberScrollState()),
+    ) {
+        Text("Fiche manuelle", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(
+            value = state.title,
+            onValueChange = viewModel::updateManualEntryTitle,
+            label = { Text("Titre") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.authors,
+            onValueChange = viewModel::updateManualEntryAuthors,
+            label = { Text("Auteur(s)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = state.year,
+                onValueChange = viewModel::updateManualEntryYear,
+                label = { Text("Année") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedTextField(
+                value = state.isbn,
+                onValueChange = viewModel::updateManualEntryIsbn,
+                label = { Text("ISBN") },
+                singleLine = true,
+                modifier = Modifier.weight(2f),
+            )
+        }
+        Text(
+            "L'ISBN permettra de retrouver la fiche complète plus tard via « Rechercher à nouveau ».",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = viewModel::confirmBookManualEntry, enabled = state.title.isNotBlank()) {
+                Text(stringResource(R.string.action_save))
+            }
             TextButton(onClick = viewModel::resetToScanning) { Text(stringResource(R.string.action_cancel)) }
         }
     }

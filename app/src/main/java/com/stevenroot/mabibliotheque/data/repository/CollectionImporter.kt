@@ -1,7 +1,9 @@
 package com.stevenroot.mabibliotheque.data.repository
 
 import android.content.Context
+import com.stevenroot.mabibliotheque.data.local.CopyKind
 import com.stevenroot.mabibliotheque.data.local.CoverStorage
+import com.stevenroot.mabibliotheque.data.local.MovieCopyEntity
 import com.stevenroot.mabibliotheque.data.local.MovieDao
 import com.stevenroot.mabibliotheque.data.local.MovieEntity
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +36,9 @@ data class ImportResult(val inserted: Int, val updated: Int, val skipped: Int)
  * (no storage permission needed, nothing bundled in the APK) rather than app assets, since this
  * ~40MB of cover images is only ever needed once per install, not shipped to every user forever.
  * A barcode already present (e.g. from manual scanning) is enriched with any fields it's
- * missing rather than overwritten — this is also how re-running the import safely resumes.
+ * missing rather than overwritten — this is also how re-running the import safely resumes. A
+ * title matching an existing movie (by exact name — imports carry no tmdbId) gains a second
+ * copy instead of a duplicate card, same merge rule as [MovieRepository.findOrCreateMovie].
  */
 class CollectionImporter(
     private val context: Context,
@@ -63,37 +67,52 @@ class CollectionImporter(
             val frontPath = row.front_cover?.let { copyIfExists(it, "${barcode}_front.jpg") }
             val backPath = row.back_cover?.let { copyIfExists(it, "${barcode}_back.jpg") }
 
-            val existing = movieDao.findByBarcode(barcode)
-            if (existing != null) {
-                movieDao.update(
-                    existing.copy(
-                        director = existing.director ?: row.director,
-                        actors = existing.actors ?: row.actors,
-                        runtimeMinutes = existing.runtimeMinutes ?: parseRuntime(row.runtime),
-                        year = existing.year ?: row.year?.toIntOrNull(),
-                        frontCoverPath = existing.frontCoverPath ?: frontPath,
-                        backCoverPath = existing.backCoverPath ?: backPath,
+            val existingCopy = movieDao.findCopyByBarcode(barcode)
+            if (existingCopy != null) {
+                movieDao.updateCopy(
+                    existingCopy.copy(
+                        frontCoverPath = existingCopy.frontCoverPath ?: frontPath,
+                        backCoverPath = existingCopy.backCoverPath ?: backPath,
                     ),
                 )
+                val movie = movieDao.findMovieById(existingCopy.movieId)
+                if (movie != null) {
+                    movieDao.updateMovie(
+                        movie.copy(
+                            director = movie.director ?: row.director,
+                            actors = movie.actors ?: row.actors,
+                            runtimeMinutes = movie.runtimeMinutes ?: parseRuntime(row.runtime),
+                            year = movie.year ?: row.year?.toIntOrNull(),
+                        ),
+                    )
+                }
                 updated++
             } else {
-                movieDao.insert(
-                    MovieEntity(
-                        title = row.title,
-                        originalTitle = null,
-                        year = row.year?.toIntOrNull(),
-                        overview = null,
-                        genres = null,
-                        runtimeMinutes = parseRuntime(row.runtime),
-                        director = row.director,
-                        actors = row.actors,
-                        posterUrl = null,
+                val movieId = movieDao.findMovieByExactTitle(row.title)?.id
+                    ?: movieDao.insertMovie(
+                        MovieEntity(
+                            title = row.title,
+                            originalTitle = null,
+                            year = row.year?.toIntOrNull(),
+                            overview = null,
+                            genres = null,
+                            runtimeMinutes = parseRuntime(row.runtime),
+                            director = row.director,
+                            actors = row.actors,
+                            posterUrl = null,
+                            tmdbId = null,
+                            dateAddedMillis = System.currentTimeMillis(),
+                        ),
+                    )
+                movieDao.insertCopy(
+                    MovieCopyEntity(
+                        movieId = movieId,
+                        kind = CopyKind.PHYSICAL,
                         format = "Blu-ray",
                         barcode = barcode,
-                        tmdbId = null,
-                        dateAddedMillis = System.currentTimeMillis(),
                         frontCoverPath = frontPath,
                         backCoverPath = backPath,
+                        dateAddedMillis = System.currentTimeMillis(),
                     ),
                 )
                 inserted++

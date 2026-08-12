@@ -4,7 +4,8 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.stevenroot.mabibliotheque.data.remote.GoogleBookVolumeInfo
+import com.stevenroot.mabibliotheque.data.remote.BookIdentifier
+import com.stevenroot.mabibliotheque.data.remote.BookVolumeInfo
 import com.stevenroot.mabibliotheque.data.remote.TmdbMovieSummary
 import com.stevenroot.mabibliotheque.data.repository.BarcodeClassifier
 import com.stevenroot.mabibliotheque.data.repository.BookRepository
@@ -72,7 +73,7 @@ class ScanViewModel(
         }
     }
 
-    private fun handleBookCandidates(barcode: String, candidates: List<GoogleBookVolumeInfo>) {
+    private fun handleBookCandidates(barcode: String, candidates: List<BookVolumeInfo>) {
         _state.value = ScanUiState.BookConfirm(barcode, candidates.first())
     }
 
@@ -99,21 +100,38 @@ class ScanViewModel(
     fun confirmSaveMovie() {
         val current = _state.value as? ScanUiState.MovieConfirm ?: return
         viewModelScope.launch {
-            movieRepository.save(current.details, current.barcode, current.format)
+            movieRepository.save(current.details, current.barcode.takeIf { it.isNotBlank() }, current.format)
             _state.value = ScanUiState.Saved(MediaKind.MOVIE, current.details.title)
         }
     }
 
+    /** When entry started from [startManualEntry] (no barcode was ever scanned), fall back to
+     * the confirmed edition's own ISBN — the real identifier for that book — and only as a last
+     * resort (no ISBN at all in the source data either) a synthetic value, since [BookEntity]
+     * requires a non-null barcode. */
     fun confirmSaveBook() {
         val current = _state.value as? ScanUiState.BookConfirm ?: return
         viewModelScope.launch {
-            bookRepository.save(current.info, current.barcode)
+            val barcode = current.barcode.ifBlank {
+                current.info.industryIdentifiers.firstOrNull { it.type == "ISBN_13" }?.identifier
+                    ?: current.info.industryIdentifiers.firstOrNull()?.identifier
+                    ?: "manual-${System.currentTimeMillis()}"
+            }
+            bookRepository.save(current.info, barcode)
             _state.value = ScanUiState.Saved(MediaKind.BOOK, current.info.title)
         }
     }
 
     fun startManualSearch(kind: MediaKind, barcode: String) {
         _state.value = ScanUiState.ManualSearch(kind, barcode)
+    }
+
+    /** Entry point for titles that have no scannable barcode at all (a damaged/missing barcode,
+     * or a book whose ISBN is only printed as text) — skips straight to manual search with no
+     * barcode context, rather than requiring a scan attempt first. */
+    fun startManualEntry(kind: MediaKind) {
+        isProcessingScan = true
+        _state.value = ScanUiState.ManualSearch(kind, barcode = "")
     }
 
     fun startCoverPhoto(kind: MediaKind, barcode: String) {
@@ -185,12 +203,67 @@ class ScanViewModel(
         }
     }
 
+    /** Reached when BnF + Open Library both come up empty even after a manual title search —
+     * the user fills in the fiche by hand instead of giving up. */
+    fun startBookManualEntry() {
+        val current = _state.value
+        val barcode = (current as? ScanUiState.ManualSearch)?.barcode
+            ?: (current as? ScanUiState.NotFound)?.barcode
+            ?: ""
+        val prefillTitle = (current as? ScanUiState.ManualSearch)?.query.orEmpty()
+        _state.value = ScanUiState.BookManualEntry(barcode = barcode, title = prefillTitle, isbn = barcode)
+    }
+
+    fun updateManualEntryTitle(value: String) {
+        (_state.value as? ScanUiState.BookManualEntry)?.let { _state.value = it.copy(title = value) }
+    }
+
+    fun updateManualEntryAuthors(value: String) {
+        (_state.value as? ScanUiState.BookManualEntry)?.let { _state.value = it.copy(authors = value) }
+    }
+
+    fun updateManualEntryYear(value: String) {
+        (_state.value as? ScanUiState.BookManualEntry)?.let { _state.value = it.copy(year = value) }
+    }
+
+    fun updateManualEntryIsbn(value: String) {
+        (_state.value as? ScanUiState.BookManualEntry)?.let { _state.value = it.copy(isbn = value) }
+    }
+
+    /** Builds a [BookVolumeInfo] straight from what the user typed — same shape a real BnF/Open
+     * Library match would produce — and saves it through the normal path, so it behaves exactly
+     * like any other book afterwards (editable cover, "rechercher à nouveau", etc). */
+    fun confirmBookManualEntry() {
+        val current = _state.value as? ScanUiState.BookManualEntry ?: return
+        if (current.title.isBlank()) return
+        viewModelScope.launch {
+            val isbn = current.isbn.filter { it.isDigit() }
+            val info = BookVolumeInfo(
+                title = current.title.trim(),
+                authors = current.authors.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                publisher = null,
+                publishedDate = current.year.trim().ifBlank { null },
+                pageCount = null,
+                description = null,
+                industryIdentifiers = when (isbn.length) {
+                    13 -> listOf(BookIdentifier("ISBN_13", isbn))
+                    10 -> listOf(BookIdentifier("ISBN_10", isbn))
+                    else -> emptyList()
+                },
+                coverUrl = null,
+            )
+            val barcode = current.barcode.ifBlank { isbn }.ifBlank { "manual-${System.currentTimeMillis()}" }
+            bookRepository.save(info, barcode)
+            _state.value = ScanUiState.Saved(MediaKind.BOOK, info.title)
+        }
+    }
+
     fun onCoverPhotoError(message: String) {
         val current = _state.value as? ScanUiState.CoverPhoto ?: return
         _state.value = ScanUiState.Error(message, current.barcode)
     }
 
-    fun selectBookCandidate(barcode: String, info: GoogleBookVolumeInfo) {
+    fun selectBookCandidate(barcode: String, info: BookVolumeInfo) {
         _state.value = ScanUiState.BookConfirm(barcode, info)
     }
 

@@ -3,7 +3,9 @@ package com.stevenroot.mabibliotheque.data.local
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "movies")
+/** A canonical film identity — one row per distinct movie, shared by every [MovieCopyEntity]
+ * (Blu-ray, 4K, digital NAS file...) the user owns of it. */
+@Entity(tableName = "movie")
 data class MovieEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
@@ -15,10 +17,6 @@ data class MovieEntity(
     val director: String?,
     val actors: String?,
     val posterUrl: String?,
-    val format: String,
-    val barcode: String,
     val tmdbId: Int?,
     val dateAddedMillis: Long,
-    val frontCoverPath: String? = null,
-    val backCoverPath: String? = null,
 )

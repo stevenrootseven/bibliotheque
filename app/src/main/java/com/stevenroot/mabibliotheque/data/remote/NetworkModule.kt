@@ -29,5 +29,12 @@ class NetworkModule(private val settingsRepository: SettingsRepository) {
 
     val tmdbApi: TmdbApi = retrofit(TmdbApi.BASE_URL).create(TmdbApi::class.java)
     val upcItemDbApi: UpcItemDbApi = retrofit(UpcItemDbApi.BASE_URL).create(UpcItemDbApi::class.java)
-    val googleBooksApi: GoogleBooksApi = retrofit(GoogleBooksApi.BASE_URL).create(GoogleBooksApi::class.java)
+    val openLibraryApi: OpenLibraryApi = retrofit(OpenLibraryApi.BASE_URL).create(OpenLibraryApi::class.java)
+
+    // No converter factory — BnfApi returns raw XML (ResponseBody), parsed by hand.
+    val bnfApi: BnfApi = Retrofit.Builder()
+        .baseUrl(BnfApi.BASE_URL)
+        .client(okHttpClient)
+        .build()
+        .create(BnfApi::class.java)
 }

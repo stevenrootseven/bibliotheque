@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,19 +29,30 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
 
-/** Full-screen pinch-to-zoom/pan cover viewer — a poster thumbnail is too small to read the
- * disc's audio/subtitle language icons, which is the whole point of keeping a back-cover photo. */
+/**
+ * Full-screen pinch-to-zoom/pan cover viewer — a poster thumbnail is too small to read the
+ * disc's audio/subtitle language icons, which is the whole point of keeping a back-cover photo.
+ * When [back] is available, a "Devant"/"Dos" chip switches between the two without leaving the
+ * zoomed view — flipping a physical case doesn't require putting it down first either.
+ */
 @Composable
-fun ZoomableImageDialog(model: Any, onDismiss: () -> Unit) {
+fun ZoomableImageDialog(
+    front: Any,
+    back: Any? = null,
+    initialShowBack: Boolean = false,
+    onDismiss: () -> Unit,
+) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        var scale by remember { mutableStateOf(1f) }
-        var offset by remember { mutableStateOf(Offset.Zero) }
+        var showingBack by remember { mutableStateOf(initialShowBack && back != null) }
+        var scale by remember(showingBack) { mutableStateOf(1f) }
+        var offset by remember(showingBack) { mutableStateOf(Offset.Zero) }
+        val model = if (showingBack) back ?: front else front
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .pointerInput(Unit) {
+                .pointerInput(showingBack) {
                     detectTransformGestures { _, pan, zoom, _ ->
                         val newScale = (scale * zoom).coerceIn(1f, 6f)
                         scale = newScale
@@ -61,6 +75,19 @@ fun ZoomableImageDialog(model: Any, onDismiss: () -> Unit) {
             )
             IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
                 Icon(Icons.Filled.Close, contentDescription = null, tint = Color.White)
+            }
+            if (back != null) {
+                AssistChip(
+                    onClick = { showingBack = !showingBack },
+                    label = { Text(if (showingBack) "Devant" else "Dos") },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = Color.White.copy(alpha = 0.15f),
+                        labelColor = Color.White,
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(24.dp),
+                )
             }
         }
     }
