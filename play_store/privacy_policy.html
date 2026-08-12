@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ma Bibliothèque — Politique de confidentialité</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 700px; margin: 40px auto; padding: 0 20px; line-height: 1.6; color: #222; }
+  h1 { font-size: 1.6em; }
+  h2 { font-size: 1.2em; margin-top: 1.8em; }
+  .updated { color: #666; font-size: 0.9em; }
+</style>
+</head>
+<body>
+
+<h1>Ma Bibliothèque — Politique de confidentialité</h1>
+<p class="updated">Dernière mise à jour : 12 août 2026</p>
+
+<p>Ma Bibliothèque est une application gratuite, sans publicité, servant à
+cataloguer une collection personnelle de films, livres et séries. Cette page
+explique quelles données l'application utilise.</p>
+
+<h2>Aucune collecte de données personnelles</h2>
+<p>Ma Bibliothèque ne collecte, ne stocke sur un serveur, ni ne partage aucune
+donnée personnelle avec le développeur ou un tiers. Il n'y a ni compte
+utilisateur, ni système de suivi, ni SDK publicitaire ou d'analytics intégré à
+l'application.</p>
+
+<h2>Données stockées sur votre appareil</h2>
+<p>Le catalogue que vous constituez (films, livres, séries, jaquettes,
+photographies) est stocké uniquement sur votre appareil. Rien n'est envoyé au
+développeur.</p>
+
+<h2>Identifiants de partage réseau (NAS)</h2>
+<p>Si vous configurez une connexion à votre propre serveur NAS pour cataloguer
+des films ou séries numériques, les identifiants de connexion sont stockés
+chiffrés sur votre appareil (EncryptedSharedPreferences d'Android) et ne sont
+transmis qu'à ce NAS, jamais à un tiers ni au développeur.</p>
+
+<h2>Recherches auprès de bases de données publiques</h2>
+<p>Pour identifier un film ou un livre à partir d'un code-barres ou d'un titre,
+l'application interroge les services publics suivants :</p>
+<ul>
+  <li>The Movie Database (TMDB) — films</li>
+  <li>Bibliothèque nationale de France (BnF) — livres</li>
+  <li>Open Library — livres</li>
+  <li>UPCitemdb — traduction code-barres → produit</li>
+</ul>
+<p>Ces requêtes contiennent uniquement le terme recherché (titre ou
+code-barres) ; aucune information permettant de vous identifier n'y est
+associée.</p>
+
+<h2>Appareil photo</h2>
+<p>La permission caméra sert uniquement à scanner des codes-barres et à
+photographier des jaquettes, localement sur votre appareil. Aucune photo n'est
+envoyée où que ce soit sans une action explicite de votre part (par exemple,
+une recherche de jaquette que vous lancez vous-même dans votre navigateur).</p>
+
+<h2>Export de votre collection</h2>
+<p>La fonction d'export (CSV ou PDF) génère un fichier local que vous choisissez
+de partager vous-même, via l'application de votre choix (messagerie, courriel,
+etc.). Le développeur n'a accès à aucun de ces fichiers.</p>
+
+<h2>Contact</h2>
+<p>Pour toute question concernant cette politique de confidentialité, vous
+pouvez contacter le développeur via GitHub :
+<a href="https://github.com/stevenrootseven/bibliotheque">github.com/stevenrootseven/bibliotheque</a>.</p>
+
+</body>
+</html>
