@@ -74,6 +74,7 @@ fun AppNavHost() {
                     app.movieRepository,
                     app.bookRepository,
                     app.seriesRepository,
+                    app.database,
                 ),
             )
             SettingsScreen(

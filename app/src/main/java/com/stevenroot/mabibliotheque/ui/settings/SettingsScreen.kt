@@ -1,5 +1,8 @@
 package com.stevenroot.mabibliotheque.ui.settings
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,8 +10,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
@@ -18,12 +24,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -55,7 +66,8 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(stringResource(R.string.settings_tmdb_key_title), style = MaterialTheme.typography.titleMedium)
@@ -100,7 +112,67 @@ fun SettingsScreen(
 
             Divider(modifier = Modifier.padding(vertical = 8.dp))
             ExportSection(viewModel)
+
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+            BackupSection(viewModel)
         }
+    }
+}
+
+@Composable
+private fun BackupSection(viewModel: SettingsViewModel) {
+    val context = LocalContext.current
+    val backupState by viewModel.backupState.collectAsState()
+    val running = backupState is BackupUiState.Running
+    var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
+
+    val pickBackupFile = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) pendingRestoreUri = uri
+    }
+
+    Text("Sauvegarde et transfert", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Sauvegarde toute ta collection (fiches et jaquettes) dans un seul fichier, sans dépendre " +
+            "d'un compte Google — pratique pour changer de téléphone ou garder une copie de secours. " +
+            "Restaurer remplace entièrement la collection actuelle par celle du fichier choisi.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = { viewModel.exportBackup(context) }, enabled = !running) { Text("Exporter une sauvegarde") }
+        OutlinedButton(onClick = { pickBackupFile.launch("application/zip") }, enabled = !running) { Text("Restaurer une sauvegarde") }
+    }
+    if (running) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+            Text("Traitement en cours…")
+        }
+    }
+    if (backupState is BackupUiState.Error) {
+        Text((backupState as BackupUiState.Error).message, color = MaterialTheme.colorScheme.error)
+    }
+
+    pendingRestoreUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingRestoreUri = null },
+            title = { Text("Restaurer cette sauvegarde ?") },
+            text = {
+                Text(
+                    "Toute la collection actuelle (films, livres, séries et jaquettes) sera " +
+                        "remplacée par le contenu de ce fichier. Cette action est irréversible. " +
+                        "L'application redémarrera juste après.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.restoreBackup(context, uri)
+                    pendingRestoreUri = null
+                }) { Text("Restaurer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRestoreUri = null }) { Text(stringResource(R.string.action_cancel)) }
+            },
+        )
     }
 }
 

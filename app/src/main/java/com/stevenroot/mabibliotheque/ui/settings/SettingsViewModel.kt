@@ -1,10 +1,13 @@
 package com.stevenroot.mabibliotheque.ui.settings
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.stevenroot.mabibliotheque.data.backup.BackupManager
 import com.stevenroot.mabibliotheque.data.export.CollectionExporter
+import com.stevenroot.mabibliotheque.data.local.AppDatabase
 import com.stevenroot.mabibliotheque.data.local.BookEntity
 import com.stevenroot.mabibliotheque.data.local.MovieWithCopies
 import com.stevenroot.mabibliotheque.data.local.SeriesWithEpisodes
@@ -34,12 +37,19 @@ sealed interface ExportUiState {
     data class Error(val message: String) : ExportUiState
 }
 
+sealed interface BackupUiState {
+    data object Idle : BackupUiState
+    data object Running : BackupUiState
+    data class Error(val message: String) : BackupUiState
+}
+
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
     private val collectionImporter: CollectionImporter,
     private val movieRepository: MovieRepository,
     private val bookRepository: BookRepository,
     private val seriesRepository: SeriesRepository,
+    private val database: AppDatabase,
 ) : ViewModel() {
 
     private val _apiKeyInput = MutableStateFlow("")
@@ -106,15 +116,42 @@ class SettingsViewModel(
         }
     }
 
+    private val _backupState = MutableStateFlow<BackupUiState>(BackupUiState.Idle)
+    val backupState: StateFlow<BackupUiState> = _backupState.asStateFlow()
+
+    fun exportBackup(context: Context) = viewModelScope.launch {
+        _backupState.value = BackupUiState.Running
+        runCatching {
+            BackupManager.exportBackup(context.applicationContext, database)
+        }.onSuccess { file ->
+            _backupState.value = BackupUiState.Idle
+            context.startActivity(BackupManager.shareIntent(context, file))
+        }.onFailure {
+            _backupState.value = BackupUiState.Error(it.message ?: "Erreur lors de la sauvegarde")
+        }
+    }
+
+    /** Restores in place and restarts the app on success — see [BackupManager.restoreBackup] for
+     * why a live restart is unavoidable here. On failure, the current (untouched) collection
+     * keeps working normally. */
+    fun restoreBackup(context: Context, backupUri: Uri) = viewModelScope.launch {
+        _backupState.value = BackupUiState.Running
+        when (val result = BackupManager.restoreBackup(context.applicationContext, database, backupUri)) {
+            BackupManager.RestoreResult.Success -> BackupManager.restartApp(context.applicationContext)
+            is BackupManager.RestoreResult.Error -> _backupState.value = BackupUiState.Error(result.message)
+        }
+    }
+
     class Factory(
         private val settingsRepository: SettingsRepository,
         private val collectionImporter: CollectionImporter,
         private val movieRepository: MovieRepository,
         private val bookRepository: BookRepository,
         private val seriesRepository: SeriesRepository,
+        private val database: AppDatabase,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            SettingsViewModel(settingsRepository, collectionImporter, movieRepository, bookRepository, seriesRepository) as T
+            SettingsViewModel(settingsRepository, collectionImporter, movieRepository, bookRepository, seriesRepository, database) as T
     }
 }
