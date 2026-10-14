@@ -282,7 +282,8 @@ private fun SeriesScanSection(viewModel: NetworkShareSettingsViewModel, enabled:
         is SeriesScanUiState.Done -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 "${state.result.showsFound} séries, ${state.result.episodesAdded} fichiers ajoutés, " +
-                    "${state.result.episodesRemoved} retirés",
+                    "${state.result.episodesRemoved} retirés" +
+                    if (state.result.showsRemoved > 0) ", ${state.result.showsRemoved} série(s) supprimée(s)" else "",
                 color = MaterialTheme.colorScheme.primary,
             )
             TextButton(onClick = viewModel::rescanSeries) { Text("Relancer") }

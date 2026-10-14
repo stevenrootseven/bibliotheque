@@ -45,4 +45,7 @@ interface SeriesDao {
 
     @Query("SELECT * FROM series WHERE id = :id")
     suspend fun findSeriesById(id: Long): SeriesEntity?
+
+    @Query("SELECT * FROM series")
+    suspend fun allSeries(): List<SeriesEntity>
 }

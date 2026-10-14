@@ -76,15 +76,20 @@ fun CropImageDialog(
                 val handleRadiusPx = with(density) { 24.dp.toPx() }
                 val minCropSizePx = with(density) { 48.dp.toPx() }
 
-                // Starts at the full image: the photo is framed correctly almost every time, so
-                // defaulting to a pre-shrunk box just makes the user drag it back out each time.
+                // Starts at (almost) the full image: the photo is framed correctly almost every
+                // time, so defaulting to a pre-shrunk box just makes the user drag it back out
+                // each time. Inset by the handle radius rather than flush with the edges — a
+                // corner dot sitting exactly on the canvas boundary has half its touch target
+                // clipped outside the pointerInput area, so most touches near it missed the
+                // corner entirely and fell back to a MOVE that couldn't go anywhere (the rect
+                // already filled the canvas), making the handles look draggable but do nothing.
                 var cropRect by remember(bitmap) {
                     mutableStateOf(
                         Rect(
-                            left = 0f,
-                            top = 0f,
-                            right = renderedWidthPx,
-                            bottom = renderedHeightPx,
+                            left = handleRadiusPx,
+                            top = handleRadiusPx,
+                            right = renderedWidthPx - handleRadiusPx,
+                            bottom = renderedHeightPx - handleRadiusPx,
                         ),
                     )
                 }

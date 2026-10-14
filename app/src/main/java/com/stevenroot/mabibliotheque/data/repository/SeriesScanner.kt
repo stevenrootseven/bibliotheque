@@ -7,7 +7,7 @@ import com.stevenroot.mabibliotheque.data.remote.SmbClient
 import kotlinx.coroutines.CancellationException
 
 data class SeriesScanProgress(val phase: String, val done: Int, val total: Int)
-data class SeriesScanResult(val showsFound: Int, val episodesAdded: Int, val episodesRemoved: Int)
+data class SeriesScanResult(val showsFound: Int, val episodesAdded: Int, val episodesRemoved: Int, val showsRemoved: Int)
 
 /**
  * Deliberately dumber than [DigitalLibraryScanner]: a show isn't identified against any
@@ -84,7 +84,24 @@ class SeriesScanner(
             }
         }
 
+        // Shows that used to exist but whose folder is gone entirely from this scan (deleted or
+        // renamed on the NAS) never appear in showFolders above, so the per-folder loop never
+        // touches them — without this, a removed show stays in the collection forever.
+        val foundNames = showFolders.map { it.name }.toSet()
+        var showsRemoved = 0
+        for (series in seriesDao.allSeries()) {
+            if (foundNames.none { it.equals(series.name, ignoreCase = true) }) {
+                seriesDao.deleteSeries(series)
+                showsRemoved++
+            }
+        }
+
         onProgress(SeriesScanProgress("Terminé", showFolders.size, showFolders.size))
-        return SeriesScanResult(showsFound = showFolders.size, episodesAdded = episodesAdded, episodesRemoved = episodesRemoved)
+        return SeriesScanResult(
+            showsFound = showFolders.size,
+            episodesAdded = episodesAdded,
+            episodesRemoved = episodesRemoved,
+            showsRemoved = showsRemoved,
+        )
     }
 }
