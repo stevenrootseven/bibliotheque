@@ -6,8 +6,13 @@ import android.net.Uri
 import androidx.core.content.FileProvider
 import androidx.sqlite.db.SimpleSQLiteQuery
 import com.stevenroot.mabibliotheque.data.local.AppDatabase
+import com.stevenroot.mabibliotheque.data.repository.NetworkShareConfig
+import com.stevenroot.mabibliotheque.data.repository.NetworkShareSettingsRepository
+import com.stevenroot.mabibliotheque.data.repository.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -20,27 +25,58 @@ import java.util.zip.ZipOutputStream
 
 /**
  * Full-collection backup/restore, independent of any cloud account. Bundles the Room database
- * (movies, books, series, copies, episodes) and every locally stored cover photo into one .zip
- * the user can move anywhere — a second phone, a USB drive, any cloud app of their own choice —
- * and restore from later.
+ * (movies, books, series, copies, episodes), every locally stored cover photo, the TMDB key and
+ * the NAS connection settings into one .zip the user can move anywhere — a second phone, a USB
+ * drive, any cloud app of their own choice — and restore from later.
  *
- * Deliberately excludes the TMDB key and NAS credentials: the NAS password is encrypted with a
- * key tied to the Android Keystore of the *original* device, so it can never be decrypted on a
- * different phone anyway — re-entering both on the new device is unavoidable either way, and
- * safer than putting them in a file that might end up copied or shared loosely.
+ * The NAS password is normally encrypted with a key tied to the Android Keystore of the
+ * *current install* — that key is destroyed on uninstall, so without this, both the TMDB key and
+ * the NAS login would be silently lost on every reinstall, backup or not. Reading them here
+ * (through the still-live repositories, before the key dies) and writing them back through the
+ * same repositories on restore sidesteps that entirely: the new install re-encrypts them with
+ * its own fresh key. The trade-off is that the .zip now carries a real NAS password in
+ * [settings.json] — acceptable since it's the user's own file, going wherever *they* choose to
+ * send it, but worth being upfront about in the UI that offers this button.
  */
 object BackupManager {
     private const val DB_ENTRY = "database/ma_bibliotheque.db"
     private const val COVERS_ENTRY_PREFIX = "covers/"
+    private const val SETTINGS_ENTRY = "settings.json"
     private const val DB_FILE_NAME = "ma_bibliotheque.db"
 
-    suspend fun exportBackup(context: Context, database: AppDatabase): File = withContext(Dispatchers.IO) {
+    @Serializable
+    private data class BackupSettings(
+        val tmdbApiKey: String? = null,
+        val nasHost: String = "",
+        val nasShare: String = "",
+        val nasUsername: String = "",
+        val nasPassword: String = "",
+        val nasIncludedFolders: List<String> = emptyList(),
+        val nasSeriesFolder: String? = null,
+    )
+
+    suspend fun exportBackup(
+        context: Context,
+        database: AppDatabase,
+        settingsRepository: SettingsRepository,
+        networkShareSettingsRepository: NetworkShareSettingsRepository,
+    ): File = withContext(Dispatchers.IO) {
         // Merges the write-ahead log into the main file so the .db alone is a complete,
         // consistent snapshot — no need to also carry the -wal/-shm files.
         database.openHelper.writableDatabase.query(SimpleSQLiteQuery("PRAGMA wal_checkpoint(FULL)")).close()
 
         val dbFile = context.getDatabasePath(DB_FILE_NAME)
         val coversDir = File(context.filesDir, "covers")
+        val nasConfig = networkShareSettingsRepository.config.value
+        val settings = BackupSettings(
+            tmdbApiKey = settingsRepository.currentTmdbApiKey(),
+            nasHost = nasConfig.host,
+            nasShare = nasConfig.shareName,
+            nasUsername = nasConfig.username,
+            nasPassword = nasConfig.password,
+            nasIncludedFolders = nasConfig.includedFolders.toList(),
+            nasSeriesFolder = nasConfig.seriesFolder,
+        )
         val zipFile = File(backupDir(context), "mabibliotheque_backup_${timestamp()}.zip")
 
         ZipOutputStream(FileOutputStream(zipFile)).use { zip ->
@@ -48,6 +84,9 @@ object BackupManager {
             coversDir.listFiles()?.forEach { file ->
                 if (file.isFile) addFileToZip(zip, file, COVERS_ENTRY_PREFIX + file.name)
             }
+            zip.putNextEntry(ZipEntry(SETTINGS_ENTRY))
+            zip.write(Json.encodeToString(BackupSettings.serializer(), settings).toByteArray())
+            zip.closeEntry()
         }
         zipFile
     }
@@ -58,10 +97,18 @@ object BackupManager {
     }
 
     /** Wholesale replace, not a merge: closes the live database, overwrites the .db file and the
-     * entire covers directory from the backup. The caller MUST restart the app right after a
-     * [RestoreResult.Success] — swapping the database file out from under a live Room connection
-     * (and every repository/DAO built on top of it) isn't safe otherwise. */
-    suspend fun restoreBackup(context: Context, database: AppDatabase, backupUri: Uri): RestoreResult =
+     * entire covers directory from the backup, and re-saves the TMDB key / NAS config through
+     * the live repositories (see the class doc for why that round-trip matters). The caller MUST
+     * restart the app right after a [RestoreResult.Success] — swapping the database file out
+     * from under a live Room connection (and every repository/DAO built on top of it) isn't safe
+     * otherwise. */
+    suspend fun restoreBackup(
+        context: Context,
+        database: AppDatabase,
+        settingsRepository: SettingsRepository,
+        networkShareSettingsRepository: NetworkShareSettingsRepository,
+        backupUri: Uri,
+    ): RestoreResult =
         withContext(Dispatchers.IO) {
             val tempDir = File(context.cacheDir, "restore_tmp").apply {
                 deleteRecursively()
@@ -102,6 +149,25 @@ object BackupManager {
                 coversDir.mkdirs()
                 File(tempDir, COVERS_ENTRY_PREFIX).listFiles()?.forEach { file ->
                     file.copyTo(File(coversDir, file.name), overwrite = true)
+                }
+
+                // Older backups (made before this field existed) simply won't have this entry —
+                // restore everything else and leave the current TMDB/NAS settings untouched.
+                File(tempDir, SETTINGS_ENTRY).takeIf { it.exists() }?.let { file ->
+                    val settings = Json.decodeFromString(BackupSettings.serializer(), file.readText())
+                    settings.tmdbApiKey?.let { settingsRepository.setTmdbApiKey(it) }
+                    if (settings.nasHost.isNotBlank()) {
+                        networkShareSettingsRepository.save(
+                            NetworkShareConfig(
+                                host = settings.nasHost,
+                                shareName = settings.nasShare,
+                                username = settings.nasUsername,
+                                password = settings.nasPassword,
+                                includedFolders = settings.nasIncludedFolders.toSet(),
+                                seriesFolder = settings.nasSeriesFolder,
+                            ),
+                        )
+                    }
                 }
 
                 RestoreResult.Success

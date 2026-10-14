@@ -67,6 +67,8 @@ import com.stevenroot.mabibliotheque.data.repository.NetworkShareConfig
 import com.stevenroot.mabibliotheque.ui.common.CropImageDialog
 import com.stevenroot.mabibliotheque.ui.common.ZoomableImageDialog
 import com.stevenroot.mabibliotheque.ui.common.playSmbFile
+import com.stevenroot.mabibliotheque.ui.common.rememberOnlineSearchReturn
+import com.stevenroot.mabibliotheque.ui.common.searchCoverOnline
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -131,6 +133,9 @@ fun MovieDetailScreen(
             } else {
                 editTarget = null
             }
+        }
+        val markOnlineSearchStarted = rememberOnlineSearchReturn {
+            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
 
         Column(
@@ -219,20 +224,29 @@ fun MovieDetailScreen(
         if (showChooser) {
             AlertDialog(
                 onDismissRequest = { showChooser = false; editTarget = null },
-                confirmButton = {
-                    TextButton(onClick = {
-                        showChooser = false
-                        cameraLauncher.launch(null)
-                    }) { Text("Prendre une photo") }
-                },
+                confirmButton = {},
                 dismissButton = {
-                    TextButton(onClick = {
-                        showChooser = false
-                        galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }) { Text("Choisir une image") }
+                    TextButton(onClick = { showChooser = false; editTarget = null }) { Text(stringResource(R.string.action_cancel)) }
                 },
                 title = { Text(if (editTarget == true) "Jaquette (devant)" else "Jaquette (dos)") },
-                text = { Text("Prendre une photo ou choisir une image existante.") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = {
+                            showChooser = false
+                            cameraLauncher.launch(null)
+                        }) { Text("Prendre une photo") }
+                        TextButton(onClick = {
+                            showChooser = false
+                            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }) { Text("Choisir une image") }
+                        TextButton(onClick = {
+                            showChooser = false
+                            markOnlineSearchStarted()
+                            val query = listOfNotNull(movie.title, movie.year?.toString(), "affiche film").joinToString(" ")
+                            searchCoverOnline(context, query)
+                        }) { Text("Rechercher une image en ligne") }
+                    }
+                },
             )
         }
 

@@ -16,6 +16,7 @@ import com.stevenroot.mabibliotheque.data.repository.CollectionImporter
 import com.stevenroot.mabibliotheque.data.repository.ImportProgress
 import com.stevenroot.mabibliotheque.data.repository.ImportResult
 import com.stevenroot.mabibliotheque.data.repository.MovieRepository
+import com.stevenroot.mabibliotheque.data.repository.NetworkShareSettingsRepository
 import com.stevenroot.mabibliotheque.data.repository.SeriesRepository
 import com.stevenroot.mabibliotheque.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,6 +51,7 @@ class SettingsViewModel(
     private val bookRepository: BookRepository,
     private val seriesRepository: SeriesRepository,
     private val database: AppDatabase,
+    private val networkShareSettingsRepository: NetworkShareSettingsRepository,
 ) : ViewModel() {
 
     private val _apiKeyInput = MutableStateFlow("")
@@ -122,7 +124,7 @@ class SettingsViewModel(
     fun exportBackup(context: Context) = viewModelScope.launch {
         _backupState.value = BackupUiState.Running
         runCatching {
-            BackupManager.exportBackup(context.applicationContext, database)
+            BackupManager.exportBackup(context.applicationContext, database, settingsRepository, networkShareSettingsRepository)
         }.onSuccess { file ->
             _backupState.value = BackupUiState.Idle
             context.startActivity(BackupManager.shareIntent(context, file))
@@ -136,7 +138,10 @@ class SettingsViewModel(
      * keeps working normally. */
     fun restoreBackup(context: Context, backupUri: Uri) = viewModelScope.launch {
         _backupState.value = BackupUiState.Running
-        when (val result = BackupManager.restoreBackup(context.applicationContext, database, backupUri)) {
+        val result = BackupManager.restoreBackup(
+            context.applicationContext, database, settingsRepository, networkShareSettingsRepository, backupUri,
+        )
+        when (result) {
             BackupManager.RestoreResult.Success -> BackupManager.restartApp(context.applicationContext)
             is BackupManager.RestoreResult.Error -> _backupState.value = BackupUiState.Error(result.message)
         }
@@ -149,9 +154,13 @@ class SettingsViewModel(
         private val bookRepository: BookRepository,
         private val seriesRepository: SeriesRepository,
         private val database: AppDatabase,
+        private val networkShareSettingsRepository: NetworkShareSettingsRepository,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            SettingsViewModel(settingsRepository, collectionImporter, movieRepository, bookRepository, seriesRepository, database) as T
+            SettingsViewModel(
+                settingsRepository, collectionImporter, movieRepository, bookRepository, seriesRepository, database,
+                networkShareSettingsRepository,
+            ) as T
     }
 }

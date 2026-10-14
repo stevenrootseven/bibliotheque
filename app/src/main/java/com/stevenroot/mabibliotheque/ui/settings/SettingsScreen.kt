@@ -132,9 +132,12 @@ private fun BackupSection(viewModel: SettingsViewModel) {
 
     Text("Sauvegarde et transfert", style = MaterialTheme.typography.titleMedium)
     Text(
-        "Sauvegarde toute ta collection (fiches et jaquettes) dans un seul fichier, sans dépendre " +
-            "d'un compte Google — pratique pour changer de téléphone ou garder une copie de secours. " +
-            "Restaurer remplace entièrement la collection actuelle par celle du fichier choisi.",
+        "Sauvegarde toute ta collection (fiches et jaquettes), ta clé TMDB et ta connexion NAS " +
+            "dans un seul fichier, sans dépendre d'un compte Google — pratique pour changer de " +
+            "téléphone, réinstaller l'application ou garder une copie de secours. Ce fichier " +
+            "contient le mot de passe de ton NAS : partage-le uniquement avec toi-même (ton " +
+            "autre appareil, ton propre cloud). Restaurer remplace entièrement la collection " +
+            "actuelle par celle du fichier choisi.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

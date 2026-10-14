@@ -1,12 +1,7 @@
 package com.stevenroot.mabibliotheque.ui.detail
 
-import android.content.ActivityNotFoundException
-import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,6 +55,8 @@ import com.stevenroot.mabibliotheque.R
 import com.stevenroot.mabibliotheque.data.remote.BookVolumeInfo
 import com.stevenroot.mabibliotheque.ui.common.CropImageDialog
 import com.stevenroot.mabibliotheque.ui.common.ZoomableImageDialog
+import com.stevenroot.mabibliotheque.ui.common.rememberOnlineSearchReturn
+import com.stevenroot.mabibliotheque.ui.common.searchCoverOnline
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -115,6 +112,9 @@ fun BookDetailScreen(
                     if (decoded != null) pendingCrop = decoded
                 }
             }
+        }
+        val markOnlineSearchStarted = rememberOnlineSearchReturn {
+            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
 
         Column(
@@ -181,7 +181,10 @@ fun BookDetailScreen(
                         }) { Text("Choisir une image") }
                         TextButton(onClick = {
                             showChooser = false
-                            searchCoverOnline(context, current.title, current.authors)
+                            markOnlineSearchStarted()
+                            val query = listOfNotNull(current.title, current.authors?.takeIf { it.isNotBlank() }, "couverture livre")
+                                .joinToString(" ")
+                            searchCoverOnline(context, query)
                         }) { Text("Rechercher une image en ligne") }
                     }
                 },
@@ -251,22 +254,6 @@ fun BookDetailScreen(
                 }
             },
         )
-    }
-}
-
-/** Opens the device's browser on a Google Images search for the book, so the user can pick
- * whichever cover they find (French covers are rarely in BnF/Open Library — see those repos'
- * lookup logic). This intentionally avoids any scraping or third-party API: it's the same as the
- * user typing the search themselves, so there's no key, quota, or ToS to depend on. The chosen
- * image is then saved via the existing gallery-import + crop flow, not fetched automatically. */
-private fun searchCoverOnline(context: Context, title: String, authors: String?) {
-    val query = listOfNotNull(title, authors?.takeIf { it.isNotBlank() }, "couverture livre")
-        .joinToString(" ")
-    val uri = Uri.parse("https://www.google.com/search?tbm=isch&q=" + Uri.encode(query))
-    try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-    } catch (e: ActivityNotFoundException) {
-        Toast.makeText(context, "Aucun navigateur disponible.", Toast.LENGTH_SHORT).show()
     }
 }
 

@@ -53,6 +53,8 @@ import com.stevenroot.mabibliotheque.data.repository.NetworkShareConfig
 import com.stevenroot.mabibliotheque.ui.common.CropImageDialog
 import com.stevenroot.mabibliotheque.ui.common.ZoomableImageDialog
 import com.stevenroot.mabibliotheque.ui.common.playSmbFile
+import com.stevenroot.mabibliotheque.ui.common.rememberOnlineSearchReturn
+import com.stevenroot.mabibliotheque.ui.common.searchCoverOnline
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -107,6 +109,9 @@ fun SeriesDetailScreen(
                 }
             }
         }
+        val markOnlineSearchStarted = rememberOnlineSearchReturn {
+            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
@@ -151,20 +156,28 @@ fun SeriesDetailScreen(
         if (showChooser) {
             AlertDialog(
                 onDismissRequest = { showChooser = false },
-                confirmButton = {
-                    TextButton(onClick = {
-                        showChooser = false
-                        cameraLauncher.launch(null)
-                    }) { Text("Prendre une photo") }
-                },
+                confirmButton = {},
                 dismissButton = {
-                    TextButton(onClick = {
-                        showChooser = false
-                        galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }) { Text("Choisir une image") }
+                    TextButton(onClick = { showChooser = false }) { Text(stringResource(R.string.action_cancel)) }
                 },
                 title = { Text("Couverture") },
-                text = { Text("Prendre une photo ou choisir une image existante.") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = {
+                            showChooser = false
+                            cameraLauncher.launch(null)
+                        }) { Text("Prendre une photo") }
+                        TextButton(onClick = {
+                            showChooser = false
+                            galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }) { Text("Choisir une image") }
+                        TextButton(onClick = {
+                            showChooser = false
+                            markOnlineSearchStarted()
+                            searchCoverOnline(context, "${current.series.name} affiche série")
+                        }) { Text("Rechercher une image en ligne") }
+                    }
+                },
             )
         }
 

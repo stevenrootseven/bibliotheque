@@ -75,6 +75,7 @@ fun AppNavHost() {
                     app.bookRepository,
                     app.seriesRepository,
                     app.database,
+                    app.networkShareSettingsRepository,
                 ),
             )
             SettingsScreen(
