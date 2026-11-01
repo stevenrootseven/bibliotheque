@@ -140,10 +140,13 @@ class ScanViewModel(
 
     /**
      * Ranks recognized cover text by font size (bounding-box height) as a cheap proxy for the
-     * title — normally the most prominent line on a front/back cover — then hands the user an
-     * editable, pre-filled manual search rather than searching automatically: OCR on a disc
-     * cover is noisy (taglines, actor names, review quotes can be larger than the title), so the
-     * guess must stay correctable, same as every other path in this screen.
+     * title — normally the most prominent line(s) on a front/back cover. A title spanning two or
+     * three lines (e.g. "LE SEIGNEUR" / "DES ANNEAUX") is printed in one consistent size, clearly
+     * larger than the author/tagline/publisher text around it — so every line within 75% of the
+     * tallest line's height is treated as part of the title and concatenated, in top-to-bottom
+     * reading order, rather than only ever taking the single largest line. The result still hands
+     * the user an editable, pre-filled manual search rather than searching automatically: OCR on
+     * a cover is noisy, so the guess must stay correctable, same as every other path here.
      */
     fun onCoverPhotoCaptured(bitmap: Bitmap) = viewModelScope.launch {
         val current = _state.value as? ScanUiState.CoverPhoto ?: return@launch
@@ -153,12 +156,18 @@ class ScanViewModel(
                 _state.value = ScanUiState.Error(it.message ?: "Erreur de lecture du texte", current.barcode)
                 return@launch
             }
-        val distinctTexts = lines.map { it.text }.distinct()
+        val distinctLines = lines.distinctBy { it.text }
+        val maxHeight = distinctLines.maxOfOrNull { it.heightPx } ?: 0
+        val titleLines = distinctLines
+            .filter { it.heightPx >= maxHeight * 0.75 }
+            .sortedBy { it.topPx }
+            .take(4)
+        val query = titleLines.joinToString(" ") { it.text }
         _state.value = ScanUiState.ManualSearch(
             kind = current.kind,
             barcode = current.barcode,
-            query = distinctTexts.firstOrNull().orEmpty(),
-            suggestions = distinctTexts.drop(1).take(5),
+            query = query,
+            suggestions = distinctLines.map { it.text }.filterNot { it in titleLines.map { line -> line.text } }.take(5),
         )
     }
 

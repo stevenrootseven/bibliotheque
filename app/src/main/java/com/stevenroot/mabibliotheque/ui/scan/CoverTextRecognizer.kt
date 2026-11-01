@@ -19,7 +19,11 @@ import kotlin.coroutines.resumeWithException
  */
 object CoverTextRecognizer {
 
-    data class RecognizedLine(val text: String, val heightPx: Int)
+    /** [topPx] is the line's vertical position in the photo — needed to put same-size title
+     * lines back in reading order after they've been picked out by height, since a title spread
+     * across two lines (e.g. "LE SEIGNEUR" / "DES ANNEAUX") must be read top-to-bottom, not in
+     * whatever order the height sort happens to leave them in. */
+    data class RecognizedLine(val text: String, val heightPx: Int, val topPx: Int)
 
     suspend fun recognizeLines(bitmap: Bitmap): List<RecognizedLine> {
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
@@ -34,7 +38,7 @@ object CoverTextRecognizer {
             .mapNotNull { line ->
                 val text = line.text.trim()
                 if (text.length < 2) return@mapNotNull null
-                RecognizedLine(text, line.boundingBox?.height() ?: 0)
+                RecognizedLine(text, line.boundingBox?.height() ?: 0, line.boundingBox?.top ?: 0)
             }
             .sortedByDescending { it.heightPx }
     }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
@@ -67,40 +68,46 @@ fun CropImageDialog(
 
                 val density = LocalDensity.current
                 val configuration = LocalConfiguration.current
-                val availableWidthPx = with(density) { (configuration.screenWidthDp.dp - 32.dp).toPx() }
-                val availableHeightPx = with(density) { (configuration.screenHeightDp.dp * 0.62f).toPx() }
+                val handleRadiusPx = with(density) { 24.dp.toPx() }
+                val minCropSizePx = with(density) { 48.dp.toPx() }
+                // Reserve a margin around the image itself (handled below) so corner handles
+                // flush with the image edges still get a full, un-clipped touch circle.
+                val availableWidthPx = with(density) { (configuration.screenWidthDp.dp - 32.dp).toPx() } - 2 * handleRadiusPx
+                val availableHeightPx = with(density) { (configuration.screenHeightDp.dp * 0.62f).toPx() } - 2 * handleRadiusPx
                 val bitmapAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
                 val boxAspect = availableWidthPx / availableHeightPx
                 val renderedWidthPx = if (bitmapAspect > boxAspect) availableWidthPx else availableHeightPx * bitmapAspect
                 val renderedHeightPx = if (bitmapAspect > boxAspect) availableWidthPx / bitmapAspect else availableHeightPx
-                val handleRadiusPx = with(density) { 24.dp.toPx() }
-                val minCropSizePx = with(density) { 48.dp.toPx() }
+                // The image sits inset by handleRadiusPx inside a larger canvas — that margin is
+                // what gives edge-flush corner handles room for a full touch circle, without
+                // having to shrink the crop box itself below 100% of the image to make room.
+                val canvasWidthPx = renderedWidthPx + 2 * handleRadiusPx
+                val canvasHeightPx = renderedHeightPx + 2 * handleRadiusPx
 
-                // Starts at (almost) the full image: the photo is framed correctly almost every
-                // time, so defaulting to a pre-shrunk box just makes the user drag it back out
-                // each time. Inset by the handle radius rather than flush with the edges — a
-                // corner dot sitting exactly on the canvas boundary has half its touch target
-                // clipped outside the pointerInput area, so most touches near it missed the
-                // corner entirely and fell back to a MOVE that couldn't go anywhere (the rect
-                // already filled the canvas), making the handles look draggable but do nothing.
+                // Starts at the full image: the photo is framed correctly almost every time, so
+                // defaulting to a pre-shrunk box just makes the user drag it back out each time.
                 var cropRect by remember(bitmap) {
                     mutableStateOf(
                         Rect(
                             left = handleRadiusPx,
                             top = handleRadiusPx,
-                            right = renderedWidthPx - handleRadiusPx,
-                            bottom = renderedHeightPx - handleRadiusPx,
+                            right = handleRadiusPx + renderedWidthPx,
+                            bottom = handleRadiusPx + renderedHeightPx,
                         ),
                     )
                 }
 
                 Box(
-                    modifier = with(density) { Modifier.size(renderedWidthPx.toDp(), renderedHeightPx.toDp()) },
+                    modifier = with(density) { Modifier.size(canvasWidthPx.toDp(), canvasHeightPx.toDp()) },
                 ) {
                     Image(
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = with(density) {
+                            Modifier
+                                .offset(handleRadiusPx.toDp(), handleRadiusPx.toDp())
+                                .size(renderedWidthPx.toDp(), renderedHeightPx.toDp())
+                        },
                     )
                     Canvas(
                         modifier = Modifier
@@ -118,8 +125,10 @@ fun CropImageDialog(
                                             cropRect,
                                             handle,
                                             dragAmount,
-                                            renderedWidthPx,
-                                            renderedHeightPx,
+                                            handleRadiusPx,
+                                            handleRadiusPx,
+                                            handleRadiusPx + renderedWidthPx,
+                                            handleRadiusPx + renderedHeightPx,
                                             minCropSizePx,
                                         )
                                     },
@@ -161,8 +170,8 @@ fun CropImageDialog(
                     TextButton(onClick = {
                         val scaleX = bitmap.width / renderedWidthPx
                         val scaleY = bitmap.height / renderedHeightPx
-                        val x = (cropRect.left * scaleX).toInt().coerceIn(0, bitmap.width - 1)
-                        val y = (cropRect.top * scaleY).toInt().coerceIn(0, bitmap.height - 1)
+                        val x = ((cropRect.left - handleRadiusPx) * scaleX).toInt().coerceIn(0, bitmap.width - 1)
+                        val y = ((cropRect.top - handleRadiusPx) * scaleY).toInt().coerceIn(0, bitmap.height - 1)
                         val w = (cropRect.width * scaleX).toInt().coerceIn(1, bitmap.width - x)
                         val h = (cropRect.height * scaleY).toInt().coerceIn(1, bitmap.height - y)
                         onConfirm(Bitmap.createBitmap(bitmap, x, y, w, h))
@@ -184,41 +193,45 @@ private fun nearestHandle(rect: Rect, point: Offset, radius: Float): DragHandle?
     return if (rect.contains(point)) DragHandle.MOVE else null
 }
 
+/** [minX]/[minY]/[maxX]/[maxY] are the image's own bounds within the (larger) canvas — dragging
+ * must stay within the actual image, not wander into the margin reserved for handle hit-testing. */
 private fun applyDrag(
     rect: Rect,
     handle: DragHandle,
     delta: Offset,
-    maxWidth: Float,
-    maxHeight: Float,
+    minX: Float,
+    minY: Float,
+    maxX: Float,
+    maxY: Float,
     minSize: Float,
 ): Rect = when (handle) {
     DragHandle.MOVE -> {
-        val dx = delta.x.coerceIn(-rect.left, maxWidth - rect.right)
-        val dy = delta.y.coerceIn(-rect.top, maxHeight - rect.bottom)
+        val dx = delta.x.coerceIn(minX - rect.left, maxX - rect.right)
+        val dy = delta.y.coerceIn(minY - rect.top, maxY - rect.bottom)
         rect.translate(dx, dy)
     }
     DragHandle.TOP_LEFT -> Rect(
-        left = (rect.left + delta.x).coerceIn(0f, rect.right - minSize),
-        top = (rect.top + delta.y).coerceIn(0f, rect.bottom - minSize),
+        left = (rect.left + delta.x).coerceIn(minX, rect.right - minSize),
+        top = (rect.top + delta.y).coerceIn(minY, rect.bottom - minSize),
         right = rect.right,
         bottom = rect.bottom,
     )
     DragHandle.TOP_RIGHT -> Rect(
         left = rect.left,
-        top = (rect.top + delta.y).coerceIn(0f, rect.bottom - minSize),
-        right = (rect.right + delta.x).coerceIn(rect.left + minSize, maxWidth),
+        top = (rect.top + delta.y).coerceIn(minY, rect.bottom - minSize),
+        right = (rect.right + delta.x).coerceIn(rect.left + minSize, maxX),
         bottom = rect.bottom,
     )
     DragHandle.BOTTOM_LEFT -> Rect(
-        left = (rect.left + delta.x).coerceIn(0f, rect.right - minSize),
+        left = (rect.left + delta.x).coerceIn(minX, rect.right - minSize),
         top = rect.top,
         right = rect.right,
-        bottom = (rect.bottom + delta.y).coerceIn(rect.top + minSize, maxHeight),
+        bottom = (rect.bottom + delta.y).coerceIn(rect.top + minSize, maxY),
     )
     DragHandle.BOTTOM_RIGHT -> Rect(
         left = rect.left,
         top = rect.top,
-        right = (rect.right + delta.x).coerceIn(rect.left + minSize, maxWidth),
-        bottom = (rect.bottom + delta.y).coerceIn(rect.top + minSize, maxHeight),
+        right = (rect.right + delta.x).coerceIn(rect.left + minSize, maxX),
+        bottom = (rect.bottom + delta.y).coerceIn(rect.top + minSize, maxY),
     )
 }
